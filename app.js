@@ -65,7 +65,7 @@ r.connect(config.database).then(function(c) {
     console.log("Error:", err);
   });
 
-  subscribeToTag("catsofinstagram");
+  subscribeToTag("hongkong");
 });
 
 io.sockets.on("connection", function(socket) {
@@ -120,15 +120,20 @@ app.post("/publish/photo", function(req, res) {
   var conn;
   r.connect(config.database).then(function(c) {
     conn = c;
-    return r.table("instacat").insert(
-      r.http(path)("data").merge(function(item) {
-        return {
-          time: r.now(),
-          place: r.point(
-            item("location")("longitude"),
-            item("location")("latitude")).default(null)
-        }
-      })).run(conn)
+    r.db("cats").table("instacat").insert(
+      r.http(path)("data"), { returnChanges: true })("changes")("new_val")("tags").reduce(function(left, right) {
+      return left.add(right);
+    }).map(function(item) {
+      return { id: item, count: 1 };
+    }).forEach(function(item) {
+     return r.branch(
+        r.db("cats").table("tags").get(item("id")),
+        r.db("cats").table("tags").get(item("id")).update(function(tag) {
+         return { count: tag("count").add(1).default(1) }
+        }),
+        r.db("cats").table("tags").insert(item)
+      ); 
+    }).run(conn);
   })
   .error(function(err) { console.log("Failure:", err); })
   .finally(function() {
