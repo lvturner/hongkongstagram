@@ -1,51 +1,95 @@
-
 $(document).ready(function() {
+  var socket = io.connect();
+  
+  socket.on("image", addImage); 
+  socket.on("recent", function(data) {
+    data.reverse().forEach(addImage);
+  });
 
-  var mapTiles = "http://{s}.tile.osm.org/{z}/{x}/{y}.png";
-  var mapAttrib = "&copy; <a href=\"http://osm.org/copyright\">OpenStreetMap</a> contributors";
+	socket.on("tags", function(data) {
+		var maxCount = data[0].size;
+		var fill = d3.scale.category20();
+		var tags = document.getElementById("tags");
+		var width = tags.offsetWidth;
+		var height = tags.offsetHeight - 80; // bit of a hack
 
-  var map = L.map("map").setView([0, 0], 2);
-  map.addLayer(L.tileLayer(mapTiles, {attribution: mapAttrib}));
+		var layout = d3.layout.cloud() 
+				.size([width, height])
+				.words(data.map(function(d) {
+					d.size = 10 + (d.size / maxCount) * 100;
+					return d;
+				}))
+				.padding(1)
+				.rotate(function() { return ~~(Math.random() * 2) * 90; })
+				.font("Impact")
+				.fontSize(function(d) { return d.size; })
+				.on("end", draw);
 
-  var template = Handlebars.compile($("#cat-template").html());
-  var markers = [];
+		layout.start();
 
-  $("#map").hide();
+	function draw(words) {
+		d3.select("#tags").append("svg")
+				.attr("width", layout.size()[0])
+				.attr("height", layout.size()[1])
+			.append("g")
+				.attr("transform", "translate(" + layout.size()[0] / 2 + "," + layout.size()[1] / 2 + ")")
+			.selectAll("text")
+				.data(words)
+			.enter().append("text")
+				.style("font-size", function(d) { return d.size + "px"; })
+				.style("font-family", "Impact")
+				.style("fill", function(d, i) { return fill(i); })
+				.attr("text-anchor", "middle")
+				.attr("transform", function(d) {
+					return "translate(" + [d.x, d.y] + ")rotate(" + d.rotate + ")";
+				})
+				.text(function(d) { return d.text; });
+	}
+	});
+
+		
+  var template = Handlebars.compile($("#image-template").html());
 
   $("#toggle").click(function(e) {
     $("#toggle .button").removeClass("selected");
     $(e.target).addClass("selected");
     
-    if (e.target.id == "grid-button") $("#map").hide();
-    else $("#map").show();
+    if (e.target.id == "grid-button") {
+			$("#tags").hide(); 
+			$("#images").show();
+		} else {
+			console.log("Showing tags!");
+		  $("#tags").show();
+			$("#images").hide();
+			socket.emit("tags", 1000);
+		}
   });
+	
+  function addImage(image) {
+		var captionText = image.caption.text.toLowerCase();
+		if(captionText.indexOf(">>>") === -1) { // Spammers seem to nearly always use this chevron pattern + sorry wechat
+			image.date = moment.unix(image.created_time).format("MMM DD, h:mm a");
+			var width = image.images.low_resolution.width;
+			var height = image.images.low_resolution.height;
+			var imgSrc = image.images.low_resolution.url;
+			var img = new Image(width, height);
+			img.crossOrigin = "Anonymous";
+			img.addEventListener("load", function(e) {
+				e.target.removeEventListener(e.type, arguments.callee);
+				nude.load(img);
+				nude.scan(function(result) {
+					if(!result) {
+						$("#images").append(template(image));
+					} 
+					img.remove();
+				});
+			}, false);
+			img.src = imgSrc;
+		} else {
+			// nothing
+		}
 
-  function addCat(cat) {
-    cat.date = moment.unix(cat.created_time).format("MMM DD, h:mm a");
-    $("#cats").prepend(template(cat));
-
-    if (cat.place) {
-      var count = markers.unshift(L.marker(L.latLng(
-          cat.place.coordinates[1],
-          cat.place.coordinates[0])));
-
-      map.addLayer(markers[0]);
-      markers[0].bindPopup(
-          "<img src=\"" + cat.images.thumbnail.url + "\">",
-          {minWidth: 150, minHeight: 150});
-      
-      markers[0].openPopup();
-
-      if (count > 100)
-        map.removeLayer(markers.pop());
-    }
+		// TODO: Tag cloud
   }
-
-  var socket = io.connect();
-  
-  socket.on("cat", addCat); 
-  socket.on("recent", function(data) {
-    data.reverse().forEach(addCat);
-  });
 
 });

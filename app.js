@@ -30,8 +30,11 @@ function subscribeToTag(tagName) {
 
   request.post({url: api + "subscriptions", form: params},
     function(err, response, body) {
-      if (err) console.log("Failed to subscribe:", err)
-      else console.log("Subscribed to tag:", tagName);
+      if (err) {
+				console.log("Failed to subscribe:", err);
+			} else {
+				console.log("Subscribed to tag:", tagName);
+			}
   });
 }
 
@@ -39,14 +42,14 @@ var conn;
 r.connect(config.database).then(function(c) {
   conn = c;
   return r.dbCreate(config.database.db).run(conn);
-})
-.then(function() {
-  return r.tableCreate("instacat").run(conn);
+}).then(function() {
+  return r.tableCreate("images").run(conn);
+}).then(function() {
+  return r.tableCreate("tags").run(conn);
 })
 .then(function() {
   return q.all([
-    r.table("instacat").indexCreate("time").run(conn),
-    r.table("instacat").indexCreate("place", {geo: true}).run(conn)
+    r.table("images").indexCreate("time").run(conn),
   ]);
 })
 .error(function(err) {
@@ -54,11 +57,12 @@ r.connect(config.database).then(function(c) {
     console.log(err);
 })
 .finally(function() {
-  r.table("instacat").changes().run(conn)
+  r.table("images").changes().run(conn)
   .then(function(cursor) {
     cursor.each(function(err, item) {
-      if (item && item.new_val)
-        io.sockets.emit("cat", item.new_val);
+      if (item && item.new_val) {
+        io.sockets.emit("image", item.new_val);
+			}
     });
   })
   .error(function(err) {
@@ -72,9 +76,9 @@ io.sockets.on("connection", function(socket) {
   var conn;
   r.connect(config.database).then(function(c) {
     conn = c;
-    return r.table("instacat")
+    return r.table("images")
       .orderBy({index: r.desc("time")})
-      .limit(60).run(conn)
+      .limit(60).run(conn);
   })
   .then(function(cursor) { return cursor.toArray(); })
   .then(function(result) {
@@ -85,6 +89,29 @@ io.sockets.on("connection", function(socket) {
     if (conn)
       conn.close();
   });
+
+	socket.on("tags", function(limit) {
+		console.log(limit + " tags!");
+		var conn;
+		r.connect(config.database).then(function(c) {
+			conn = c;
+			return r.table("tags")
+			.orderBy({ index: r.desc("count") })
+			.limit(limit)
+			.map(function(item) {
+				return { text: item("id"), size: item("count") };
+			})
+			.coerceTo('array')
+			.run(conn); })
+		.then(function(results) {
+			console.log(results);
+			socket.emit("tags", results);
+		}).finally(function() {
+			if(conn) {
+				conn.close();
+			}
+		});
+	});
 });
 
 app.get("/publish/photo", function(req, res) {
@@ -120,18 +147,18 @@ app.post("/publish/photo", function(req, res) {
   var conn;
   r.connect(config.database).then(function(c) {
     conn = c;
-    r.db("cats").table("instacat").insert(
+    r.db(config.database.db).table("images").insert(
       r.http(path)("data"), { returnChanges: true })("changes")("new_val")("tags").reduce(function(left, right) {
       return left.add(right);
     }).map(function(item) {
       return { id: item, count: 1 };
     }).forEach(function(item) {
      return r.branch(
-        r.db("cats").table("tags").get(item("id")),
-        r.db("cats").table("tags").get(item("id")).update(function(tag) {
-         return { count: tag("count").add(1).default(1) }
+        r.db(config.database.db).table("tags").get(item("id")),
+        r.db(config.database.db).table("tags").get(item("id")).update(function(tag) {
+         return { count: tag("count").add(1).default(1) };
         }),
-        r.db("cats").table("tags").insert(item)
+        r.db(config.database.db).table("tags").insert(item)
       ); 
     }).run(conn);
   })
