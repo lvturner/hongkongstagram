@@ -91,7 +91,6 @@ io.sockets.on("connection", function(socket) {
   });
 
 	socket.on("tags", function(limit) {
-		console.log(limit + " tags!");
 		var conn;
 		r.connect(config.database).then(function(c) {
 			conn = c;
@@ -104,7 +103,6 @@ io.sockets.on("connection", function(socket) {
 			.coerceTo('array')
 			.run(conn); })
 		.then(function(results) {
-			console.log(results);
 			socket.emit("tags", results);
 		}).finally(function() {
 			if(conn) {

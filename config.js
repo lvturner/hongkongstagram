@@ -1,4 +1,3 @@
-
 module.exports = {
   instagram: {
     client: "6fa3b4dcd87d4755bdea810850832ded",

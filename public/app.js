@@ -2,6 +2,7 @@ $(document).ready(function() {
   var socket = io.connect();
   
   socket.on("image", addImage); 
+
   socket.on("recent", function(data) {
     data.reverse().forEach(addImage);
   });
@@ -67,7 +68,7 @@ $(document).ready(function() {
 	
   function addImage(image) {
 		var captionText = image.caption.text.toLowerCase();
-		if(captionText.indexOf(">>>") === -1) { // Spammers seem to nearly always use this chevron pattern + sorry wechat
+		if(captionText.indexOf(">>>") === -1) { // Spammers seem to nearly always use this chevron pattern
 			image.date = moment.unix(image.created_time).format("MMM DD, h:mm a");
 			var width = image.images.low_resolution.width;
 			var height = image.images.low_resolution.height;
